@@ -1,2 +1,4 @@
 zone,infra_ndvi_lag_corr,granger_p_value,interpretation
-all,,N/A,Weak delayed effect detected
+urban_core,-1,N/A,Vegetation decline accelerating over time
+fringe,-1,N/A,Vegetation decline accelerating over time
+rural,-1,N/A,Vegetation decline accelerating over time

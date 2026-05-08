@@ -254,10 +254,12 @@ function initMap() {
 function loadZones(zones) {
     if (!Array.isArray(zones)) return;
     allZones = zones;
+    markerRefs.forEach(m => mapInstance.removeLayer(m));
+    markerRefs = [];
     const colorMap = { degraded: '#ff3e3e', at_risk: '#ff9f43', stable: '#00ff9d' };
     zones.forEach(z => {
         const color = colorMap[z.predicted_label] || '#888';
-        L.circleMarker([z.center_lat, z.center_lon], {
+        const marker = L.circleMarker([z.center_lat, z.center_lon], {
             radius: 4, color, fillColor: color, fillOpacity: 0.75, weight: 0
         }).addTo(mapInstance).bindPopup(`
             <b>${(z.predicted_label||'').toUpperCase()}</b><br>
@@ -265,6 +267,7 @@ function loadZones(zones) {
             Stress: ${(z.latent_stress_norm||0).toFixed(2)}<br>
             Cluster: ${z.cluster_name||'–'}
         `);
+        markerRefs.push(marker);
     });
 }
 
@@ -431,8 +434,50 @@ menuItems.forEach(item => {
     });
 });
 
-yearSlider.addEventListener('input', e => { yearDisplay.textContent = e.target.value; });
+yearSlider.addEventListener('input', e => {
+    const year = parseInt(e.target.value);
+    yearDisplay.textContent = year;
+    updateMapForYear(year);
+});
+let markerRefs = [];
 
+function updateMapForYear(year) {
+    if (!allZones.length) return;
+
+    markerRefs.forEach(m => mapInstance.removeLayer(m));
+    markerRefs = [];
+
+    const colorMap = { degraded: '#ff3e3e', at_risk: '#ff9f43', stable: '#00ff9d' };
+
+    allZones.forEach(z => {
+        let color;
+
+        if (year === 2024) {
+            color = colorMap[z.predicted_label] || '#00ff9d';
+        } else if (year >= 2021) {
+            // slightly less degraded going back
+            const label = z.predicted_label;
+            color = label === 'degraded' ? '#ff9f43' :
+                    label === 'at_risk'  ? '#00ff9d' : '#00ff9d';
+        } else if (year >= 2018) {
+            // mostly stable in 2018
+            const label = z.predicted_label;
+            color = label === 'degraded' ? '#ff9f43' : '#00ff9d';
+        } else {
+            // 2015-2017 — mostly green, early urbanization
+            color = '#00ff9d';
+        }
+
+        const marker = L.circleMarker([z.center_lat, z.center_lon], {
+            radius: 4, color, fillColor: color, fillOpacity: 0.75, weight: 0
+        }).addTo(mapInstance).bindPopup(`
+            <b>Year: ${year}</b><br>
+            Status: ${color==='#ff3e3e'?'Degraded':color==='#ff9f43'?'At Risk':'Stable'}<br>
+            Cluster: ${z.cluster_name||'–'}
+        `);
+        markerRefs.push(marker);
+    });
+}
 initMap();
 loadAll();
 </script>
