@@ -55,6 +55,13 @@ def merge_datasets(grid, ndvi, rainfall, osm, gbif) -> pd.DataFrame:
     df = df.merge(osm,      on="cell_id", how="left")
     df = df.merge(gbif,     on="cell_id", how="left")
 
+    # Fill missing NDVI with median (spatial interpolation)
+    ndvi_cols = [c for c in df.columns if c.startswith("ndvi_")]
+    for col in ndvi_cols:
+        median_val = df[col].median()
+        df[col] = df[col].fillna(median_val)
+        print(f"    Filled {col} NaN with median: {median_val:.4f}")
+
     print(f"    ✓ Merged dataframe: {df.shape[0]} rows × {df.shape[1]} columns")
     return df
 
