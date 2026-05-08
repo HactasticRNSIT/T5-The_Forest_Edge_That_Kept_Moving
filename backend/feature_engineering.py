@@ -164,10 +164,12 @@ def engineer_features(df: pd.DataFrame) -> pd.DataFrame:
     # ── Target Label ──────────────────────────────────────────────────────
     # Classify zones for supervised learning
     evs = df["ecological_vulnerability_score"]
+    p33 = evs.quantile(0.50)
+    p66 = evs.quantile(0.85)
     df["degradation_label"] = pd.cut(
-        evs,
-        bins=[0, 0.33, 0.66, 1.01],
-        labels=["stable", "at_risk", "degraded"]
+    evs,
+    bins=[-0.01, p33, p66, evs.max() + 0.01],
+    labels=["stable", "at_risk", "degraded"]
     ).astype(str)
 
     print(f"    ✓ Features engineered: {df.shape[1]} total columns")
