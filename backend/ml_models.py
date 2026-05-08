@@ -194,10 +194,12 @@ def compute_pca(df: pd.DataFrame, feature_cols: list):
 
 
 def compute_granger(df: pd.DataFrame):
-    print("\n[5/5] Computing delayed effect analysis...")
+    print("\n[5/5] Computing Granger causality (statsmodels)...")
+    from statsmodels.tsa.stattools import grangercausalitytests
+    from statsmodels.tsa.api import VAR
 
     ndvi_years = {2018: "ndvi_2018", 2021: "ndvi_2021", 2024: "ndvi_2024"}
-    results    = []
+    results = []
 
     zones = df["zone"].unique() if "zone" in df.columns else ["all"]
 
@@ -213,30 +215,45 @@ def compute_granger(df: pd.DataFrame):
                     "year":      year,
                     "ndvi_mean": zone_df[col].mean(),
                     "infra":     zone_df["infra_pressure"].mean(),
+                    "rainfall":  zone_df["rainfall_anomaly"].fillna(0).mean(),
                 })
 
-        if len(ts_data) < 2:
+        ts = pd.DataFrame(ts_data).sort_values("year")
+        if len(ts) < 3:
             continue
 
-        ts    = pd.DataFrame(ts_data).sort_values("year")
         ndvi  = ts["ndvi_mean"].values
         infra = ts["infra"].values
 
+        # Lag-1 correlation
         lag_corr = float(np.corrcoef(infra[:-1], ndvi[1:])[0, 1]) if len(ndvi) >= 2 else 0.0
+
+        # Try real Granger causality if enough data
+        p_value = None
+        try:
+            data = pd.DataFrame({"ndvi": ndvi, "infra": infra})
+            gc_result = grangercausalitytests(data[["ndvi", "infra"]], maxlag=1, verbose=False)
+            p_value = round(gc_result[1][0]["ssr_ftest"][1], 4)
+        except Exception:
+            pass
 
         results.append({
             "zone":                zone,
             "infra_ndvi_lag_corr": round(lag_corr, 4),
+            "granger_p_value":     p_value if p_value is not None else "N/A",
             "interpretation": (
-                "Infrastructure predicts future NDVI decline"
-                if lag_corr < -0.3 else "Weak delayed effect"
+                "Infrastructure significantly predicts future NDVI decline (p<0.05)"
+                if p_value is not None and p_value < 0.05
+                else "Infrastructure predicts future NDVI decline"
+                if lag_corr < -0.3
+                else "Weak delayed effect detected"
             ),
         })
-        print(f"    [{zone}] infra→NDVI lag corr: {lag_corr:.4f}")
+        print(f"    [{zone}] lag_corr: {lag_corr:.4f} | p-value: {p_value}")
 
     granger_df = pd.DataFrame(results)
     granger_df.to_csv(os.path.join(PROC_DIR, "granger_results.csv"), index=False)
-    print(f"    ✓ Saved → data/processed/granger_results.csv")
+    print(f"    ✓ Granger saved → data/processed/granger_results.csv")
     return granger_df
 
 

@@ -1,2 +1,2 @@
-zone,infra_ndvi_lag_corr,interpretation
-all,,Weak delayed effect
+zone,infra_ndvi_lag_corr,granger_p_value,interpretation
+all,,N/A,Weak delayed effect detected
