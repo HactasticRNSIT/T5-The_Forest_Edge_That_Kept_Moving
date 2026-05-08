@@ -8,6 +8,7 @@ Usage: python3 -m uvicorn backend.api:app --reload --port 8000
 import os
 import pickle
 import warnings
+import math
 import numpy as np
 import pandas as pd
 from fastapi import FastAPI
@@ -41,6 +42,7 @@ def get_df():
     global _df
     if _df is None:
         _df = pd.read_csv(os.path.join(PROC_DIR, "final_results.csv"))
+        _df = _df.fillna(0)
     return _df
 
 
@@ -65,8 +67,6 @@ def get_granger():
 @app.get("/")
 def serve_frontend():
     return FileResponse(os.path.join(FRONT_DIR, "index.html"))
-
-
 # ─────────────────────────────────────────────────────────────────────────────
 # API ENDPOINTS
 # ─────────────────────────────────────────────────────────────────────────────

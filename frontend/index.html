@@ -1,13 +1,448 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
-  </head>
-  <body>
-    <div id="root"></div>
-    <script type="module" src="/src/main.jsx"></script>
-  </body>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EcoShift AI | Ecological Intelligence OS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"/>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <style>
+        :root {
+            --bg-dark: #020408;
+            --glass: rgba(15, 20, 25, 0.4);
+            --glass-heavy: rgba(10, 12, 18, 0.7);
+            --glass-border: rgba(255, 255, 255, 0.12);
+            --eco-green: #00ff9d;
+            --eco-glow: rgba(0, 255, 157, 0.4);
+            --risk-red: #ff3e3e;
+            --risk-orange: #ff9f43;
+            --water-cyan: #00d4ff;
+            --text-main: #f0f2f5;
+            --text-dim: #94a3b8;
+            --sidebar-w: 280px;
+            --sidebar-c: 85px;
+            --transition: all 0.5s cubic-bezier(0.2, 0.8, 0.2, 1);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Sora', sans-serif; -webkit-font-smoothing: antialiased; }
+        body { background-color: var(--bg-dark); color: var(--text-main); height: 100vh; width: 100vw; overflow: hidden; display: flex; }
+        #viewport { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 0; }
+        #map { width: 100%; height: 100%; }
+        .blur-effect { filter: blur(12px) brightness(0.6); transform: scale(1.05); }
+        .glass { background: var(--glass); backdrop-filter: blur(25px); -webkit-backdrop-filter: blur(25px); border: 1px solid var(--glass-border); box-shadow: 0 8px 32px 0 rgba(0,0,0,0.6), inset 0 0 1px 1px rgba(255,255,255,0.05); border-radius: 20px; }
+        nav { position: fixed; top: 20px; left: 20px; right: 20px; height: 75px; display: flex; align-items: center; justify-content: space-between; padding: 0 30px; z-index: 1000; }
+        .nav-left { display: flex; align-items: center; gap: 20px; }
+        .toggle-sidebar { background: transparent; border: none; color: var(--text-main); font-size: 1.2rem; cursor: pointer; transition: var(--transition); width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 12px; }
+        .toggle-sidebar:hover { background: rgba(255,255,255,0.1); color: var(--eco-green); }
+        .logo-box h1 { font-size: 1.2rem; letter-spacing: 1px; font-weight: 600; text-transform: uppercase; }
+        .logo-box p { font-size: 0.65rem; color: var(--eco-green); letter-spacing: 2px; text-transform: uppercase; margin-top: -2px; }
+        .nav-right { display: flex; align-items: center; gap: 25px; }
+        .location-badge { display: flex; align-items: center; gap: 10px; font-size: 0.8rem; color: var(--text-dim); background: rgba(255,255,255,0.05); padding: 10px 20px; border-radius: 50px; border: 1px solid var(--glass-border); }
+        .profile-trigger { width: 45px; height: 45px; border-radius: 50%; background: linear-gradient(45deg, var(--glass-border), transparent); border: 1px solid var(--glass-border); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: var(--transition); }
+        .profile-trigger:hover { border-color: var(--eco-green); box-shadow: 0 0 15px var(--eco-glow); }
+        .sidebar { position: fixed; left: 20px; top: 115px; bottom: 115px; width: var(--sidebar-w); z-index: 999; transition: var(--transition); padding: 20px 0; display: flex; flex-direction: column; }
+        .sidebar.collapsed { width: var(--sidebar-c); }
+        .menu-list { list-style: none; flex: 1; }
+        .menu-item { display: flex; align-items: center; padding: 18px 30px; color: var(--text-dim); text-decoration: none; margin: 8px 12px; border-radius: 15px; transition: var(--transition); white-space: nowrap; cursor: pointer; }
+        .menu-item i { font-size: 1.1rem; min-width: 25px; margin-right: 25px; transition: 0.3s; }
+        .menu-item span { font-size: 0.9rem; letter-spacing: 0.5px; opacity: 1; transition: 0.3s; }
+        .sidebar.collapsed .menu-item span { opacity: 0; pointer-events: none; }
+        .sidebar.collapsed .menu-item { padding: 18px 28px; }
+        .menu-item:hover { color: #fff; background: rgba(255,255,255,0.08); }
+        .menu-item.active { color: var(--eco-green); background: rgba(0,255,157,0.12); border: 1px solid rgba(0,255,157,0.3); box-shadow: 0 0 20px rgba(0,255,157,0.15); }
+        #main-content { position: relative; flex: 1; z-index: 1; margin-left: var(--sidebar-w); transition: var(--transition); padding: 120px 40px 120px 40px; display: flex; justify-content: flex-end; align-items: flex-start; }
+        .sidebar.collapsed ~ #main-content { margin-left: var(--sidebar-c); }
+        .tab-panel { width: 400px; padding: 35px; animation: tabFade 0.6s ease-out; position: relative; display: none; }
+        .tab-panel.active { display: block; }
+        @keyframes tabFade { from { opacity: 0; transform: translateX(30px); } to { opacity: 1; transform: translateX(0); } }
+        .panel-tag { font-size: 0.7rem; color: var(--eco-green); letter-spacing: 2px; text-transform: uppercase; font-weight: 600; }
+        .panel-title { font-size: 1.8rem; margin: 15px 0; font-weight: 600; }
+        .status-pill { display: flex; align-items: center; gap: 12px; margin-bottom: 30px; font-size: 0.85rem; font-weight: 600; }
+        .glow-dot { width: 10px; height: 10px; border-radius: 50%; animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.5; } 100% { transform: scale(1); opacity: 1; } }
+        .data-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 30px; }
+        .data-card { background: rgba(255,255,255,0.03); padding: 20px; border-radius: 18px; border: 1px solid var(--glass-border); transition: 0.3s; }
+        .data-card:hover { background: rgba(255,255,255,0.06); transform: translateY(-3px); }
+        .data-card small { font-size: 0.6rem; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+        .data-card h3 { font-size: 1.2rem; margin-top: 5px; color: #fff; }
+        .ai-summary { padding-top: 25px; border-top: 1px solid var(--glass-border); }
+        .ai-header { font-size: 0.75rem; color: var(--eco-green); margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+        .ai-text { font-size: 0.9rem; line-height: 1.7; color: var(--text-dim); }
+        .timeline-container { position: fixed; bottom: 30px; left: 50%; transform: translateX(-50%); width: 700px; height: 70px; display: flex; align-items: center; padding: 0 40px; z-index: 10; }
+        .timeline-wrapper { position: relative; width: 100%; display: flex; align-items: center; }
+        .timeline-slider { -webkit-appearance: none; width: 100%; height: 4px; background: rgba(255,255,255,0.1); border-radius: 10px; outline: none; }
+        .timeline-slider::-webkit-slider-thumb { -webkit-appearance: none; width: 24px; height: 24px; background: #fff; border: 3px solid var(--eco-green); border-radius: 50%; cursor: pointer; box-shadow: 0 0 15px var(--eco-green); }
+        .year-label { font-size: 1.1rem; font-weight: 600; color: var(--eco-green); margin-left: 30px; min-width: 50px; text-shadow: 0 0 10px var(--eco-glow); }
+        .loading { color: var(--eco-green); font-size: 0.8rem; animation: blink 1s infinite; }
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+        .bar-container { margin: 8px 0; }
+        .bar-label { font-size: 0.75rem; color: var(--text-dim); margin-bottom: 4px; display: flex; justify-content: space-between; }
+        .bar-track { background: rgba(255,255,255,0.08); border-radius: 4px; height: 6px; }
+        .bar-fill { height: 6px; border-radius: 4px; background: linear-gradient(90deg, var(--eco-green), #00d4ff); transition: width 1s ease; }
+    </style>
+</head>
+<body>
+
+<div id="viewport"><div id="map"></div></div>
+
+<nav class="glass">
+    <div class="nav-left">
+        <button class="toggle-sidebar" id="sidebarBtn"><i class="fas fa-bars"></i></button>
+        <div class="logo-box">
+            <h1>EcoShift AI</h1>
+            <p>Ecological Intelligence OS</p>
+        </div>
+    </div>
+    <div class="nav-right">
+        <div class="location-badge">
+            <i class="fas fa-satellite-dish" style="color: var(--eco-green)"></i>
+            <span>Bengaluru Urban Fringe · <span id="nav-total" class="loading">Loading...</span> Zones</span>
+        </div>
+        <div class="profile-trigger" id="profileBtn"><i class="fas fa-user-astronaut"></i></div>
+    </div>
+</nav>
+
+<aside class="sidebar glass" id="sidebar">
+    <ul class="menu-list">
+        <li class="menu-item active" data-tab="dashboard"><i class="fas fa-th-large"></i><span>Dashboard</span></li>
+        <li class="menu-item" data-tab="risk"><i class="fas fa-biohazard"></i><span>Ecological Risk</span></li>
+        <li class="menu-item" data-tab="ndvi"><i class="fas fa-seedling"></i><span>NDVI Analysis</span></li>
+        <li class="menu-item" data-tab="urban"><i class="fas fa-city"></i><span>Urban Expansion</span></li>
+        <li class="menu-item" data-tab="water"><i class="fas fa-droplet"></i><span>Water Stress</span></li>
+        <li class="menu-item" data-tab="analytics"><i class="fas fa-brain"></i><span>AI Intelligence</span></li>
+    </ul>
+    <div style="padding:20px; border-top:1px solid var(--glass-border); margin-top:auto;">
+        <div class="menu-item" style="margin:0; padding:15px 20px;"><i class="fas fa-cog"></i><span>Settings</span></div>
+    </div>
+</aside>
+
+<main id="main-content">
+
+    <section class="tab-panel glass active" id="dashboard">
+        <span class="panel-tag">Regional Node: BLR-01</span>
+        <h2 class="panel-title">Environmental Overview</h2>
+        <div class="status-pill" style="color: var(--eco-green)">
+            <div class="glow-dot" style="background: var(--eco-green)"></div>
+            <span>Live Analysis · 2015–2024</span>
+        </div>
+        <div class="data-grid">
+            <div class="data-card"><small>Total Zones</small><h3 id="d-total">–</h3></div>
+            <div class="data-card"><small>Degraded</small><h3 id="d-degraded" style="color:var(--risk-red)">–</h3></div>
+            <div class="data-card"><small>At Risk</small><h3 id="d-atrisk" style="color:var(--risk-orange)">–</h3></div>
+            <div class="data-card"><small>Stable</small><h3 id="d-stable" style="color:var(--eco-green)">–</h3></div>
+        </div>
+        <div class="ai-summary">
+            <div class="ai-header"><i class="fas fa-robot"></i><span>AI INSIGHT</span></div>
+            <p class="ai-text" id="d-insight">Loading ecological intelligence...</p>
+        </div>
+    </section>
+
+    <section class="tab-panel glass" id="risk">
+        <span class="panel-tag">Vulnerability Metrics</span>
+        <h2 class="panel-title">Ecological Risk</h2>
+        <div class="status-pill" style="color: var(--risk-red)">
+            <div class="glow-dot" style="background: var(--risk-red)"></div>
+            <span id="risk-status">Analyzing...</span>
+        </div>
+        <div class="data-grid">
+            <div class="data-card"><small>High Latent Stress</small><h3 id="r-stress" style="color:var(--risk-red)">–</h3></div>
+            <div class="data-card"><small>Avg Vulnerability</small><h3 id="r-vuln">–</h3></div>
+        </div>
+        <div style="margin-bottom:20px;">
+            <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">Top Degradation Drivers</p>
+            <div id="r-drivers"></div>
+        </div>
+        <div class="ai-summary">
+            <div class="ai-header"><i class="fas fa-exclamation-triangle"></i><span>THREAT ASSESSMENT</span></div>
+            <p class="ai-text" id="r-insight">Loading...</p>
+        </div>
+    </section>
+
+    <section class="tab-panel glass" id="ndvi">
+        <span class="panel-tag">Vegetation Health</span>
+        <h2 class="panel-title">NDVI Analysis</h2>
+        <div class="status-pill" style="color: var(--eco-green)">
+            <div class="glow-dot" style="background: var(--eco-green)"></div>
+            <span id="ndvi-trend">Analyzing...</span>
+        </div>
+        <div class="data-grid">
+            <div class="data-card"><small>NDVI Change (10yr)</small><h3 id="n-change">–</h3></div>
+            <div class="data-card"><small>Stressed Zones</small><h3 id="n-stressed" style="color:var(--risk-orange)">–</h3></div>
+        </div>
+        <div style="margin-bottom:20px;">
+            <p style="font-size:0.75rem; color:var(--text-dim); margin-bottom:12px; text-transform:uppercase; letter-spacing:1px;">NDVI by Zone Type</p>
+            <div id="ndvi-bars"></div>
+        </div>
+        <div class="ai-summary">
+            <div class="ai-header"><i class="fas fa-leaf"></i><span>BIOSIGNATURE</span></div>
+            <p class="ai-text" id="n-insight">Loading...</p>
+        </div>
+    </section>
+
+    <section class="tab-panel glass" id="urban">
+        <span class="panel-tag">Growth Patterns</span>
+        <h2 class="panel-title">Urban Expansion</h2>
+        <div class="status-pill" style="color: var(--risk-orange)">
+            <div class="glow-dot" style="background: var(--risk-orange)"></div>
+            <span>Infrastructure Pressure Active</span>
+        </div>
+        <div class="data-grid">
+            <div class="data-card"><small>Avg Infra Pressure</small><h3 id="u-infra">–</h3></div>
+            <div class="data-card"><small>Degradation Clusters</small><h3 id="u-clusters">–</h3></div>
+        </div>
+        <div style="margin-bottom:20px;" id="cluster-list"></div>
+        <div class="ai-summary">
+            <div class="ai-header"><i class="fas fa-building"></i><span>INFRASTRUCTURE LOG</span></div>
+            <p class="ai-text" id="u-insight">Loading...</p>
+        </div>
+    </section>
+
+    <section class="tab-panel glass" id="water">
+        <span class="panel-tag">Delayed Effects</span>
+        <h2 class="panel-title">Lag Analysis</h2>
+        <div class="status-pill" style="color: var(--water-cyan)">
+            <div class="glow-dot" style="background: var(--water-cyan)"></div>
+            <span>Granger Causality Analysis</span>
+        </div>
+        <div id="granger-results"></div>
+        <div class="ai-summary">
+            <div class="ai-header"><i class="fas fa-clock-rotate-left"></i><span>DELAYED EFFECT INSIGHT</span></div>
+            <p class="ai-text">Infrastructure expansion in year T predicts vegetation decline in year T+2 to T+3. This delayed collapse is invisible to conventional monitoring systems — EcoShift AI detects it early.</p>
+        </div>
+    </section>
+
+    <section class="tab-panel glass" id="analytics">
+        <span class="panel-tag">Neural Processing</span>
+        <h2 class="panel-title">AI Intelligence</h2>
+        <div class="status-pill" style="color: var(--eco-green)">
+            <div class="glow-dot" style="background: var(--eco-green)"></div>
+            <span>Model Active · Random Forest</span>
+        </div>
+        <div class="data-grid">
+            <div class="data-card"><small>Model Confidence</small><h3 id="a-conf" style="color:var(--eco-green)">–</h3></div>
+            <div class="data-card"><small>Data Nodes</small><h3 id="a-nodes">–</h3></div>
+            <div class="data-card"><small>Latent Stress Score</small><h3 id="a-stress">–</h3></div>
+            <div class="data-card"><small>Hidden Risk Zones</small><h3 id="a-hidden" style="color:var(--risk-red)">–</h3></div>
+        </div>
+        <div class="ai-summary">
+            <div class="ai-header"><i class="fas fa-brain"></i><span>ECO-FORECAST</span></div>
+            <p class="ai-text" id="a-insight">Loading...</p>
+        </div>
+    </section>
+
+</main>
+
+<div class="timeline-container glass">
+    <div class="timeline-wrapper">
+        <input type="range" class="timeline-slider" id="yearSlider" min="2015" max="2024" value="2024">
+    </div>
+    <span class="year-label" id="yearDisplay">2024</span>
+</div>
+
+<script>
+const API = '';
+let mapInstance = null;
+let allZones = [];
+
+function initMap() {
+    mapInstance = L.map('map', { zoomControl: false }).setView([12.9716, 77.5946], 11);
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+        attribution: '© CartoDB', maxZoom: 18
+    }).addTo(mapInstance);
+}
+
+function loadZones(zones) {
+    if (!Array.isArray(zones)) return;
+    allZones = zones;
+    const colorMap = { degraded: '#ff3e3e', at_risk: '#ff9f43', stable: '#00ff9d' };
+    zones.forEach(z => {
+        const color = colorMap[z.predicted_label] || '#888';
+        L.circleMarker([z.center_lat, z.center_lon], {
+            radius: 4, color, fillColor: color, fillOpacity: 0.75, weight: 0
+        }).addTo(mapInstance).bindPopup(`
+            <b>${(z.predicted_label || '').toUpperCase()}</b><br>
+            NDVI Change: ${(z.ndvi_total_change||0).toFixed(3)}<br>
+            Stress: ${(z.latent_stress_norm||0).toFixed(2)}<br>
+            Cluster: ${z.cluster_name || '–'}
+        `);
+    });
+}
+
+function populateDashboard(s) {
+    document.getElementById('nav-total').textContent  = s.total_cells.toLocaleString();
+    document.getElementById('d-total').textContent    = s.total_cells.toLocaleString();
+    document.getElementById('d-degraded').textContent = `${s.degraded.toLocaleString()} (${s.degraded_pct}%)`;
+    document.getElementById('d-atrisk').textContent   = `${s.at_risk.toLocaleString()} (${s.at_risk_pct}%)`;
+    document.getElementById('d-stable').textContent   = `${s.stable.toLocaleString()} (${s.stable_pct}%)`;
+    document.getElementById('d-insight').textContent  =
+        `EcoShift AI analyzed ${s.total_cells.toLocaleString()} grid cells across Bengaluru's urban fringe. ` +
+        `${s.degraded_pct}% of zones are degraded, ${s.at_risk_pct}% are at risk. ` +
+        `${s.high_stress_zones} zones show high latent stress — hidden collapse risk invisible to conventional monitoring.`;
+}
+
+function populateRisk(s, imp) {
+    if (!Array.isArray(imp)) return;
+    document.getElementById('r-stress').textContent = s.high_stress_zones;
+    document.getElementById('r-vuln').textContent   = s.avg_latent_stress.toFixed(3);
+    document.getElementById('risk-status').textContent =
+        s.degraded_pct > 20 ? 'High Risk: Active Degradation' : 'Moderate Risk: Monitoring Active';
+    const driversEl = document.getElementById('r-drivers');
+    driversEl.innerHTML = '';
+    const maxImp = imp[0]?.importance || 1;
+    imp.slice(0, 6).forEach(f => {
+        const pct = ((f.importance / maxImp) * 100).toFixed(0);
+        driversEl.innerHTML += `
+        <div class="bar-container">
+            <div class="bar-label"><span>${f.feature}</span><span>${f.importance.toFixed(4)}</span></div>
+            <div class="bar-track"><div class="bar-fill" style="width:${pct}%"></div></div>
+        </div>`;
+    });
+    document.getElementById('r-insight').textContent =
+        `Top driver: "${imp[0]?.feature}" — combined with infrastructure pressure and rainfall anomaly, ` +
+        `these factors create cascading ecological collapse in ${s.degraded_pct}% of zones.`;
+}
+
+function populateNDVI(s, timeline) {
+    const change = s.avg_ndvi_change;
+    document.getElementById('n-change').textContent  = change.toFixed(3);
+    document.getElementById('n-change').style.color  = change < 0 ? 'var(--risk-red)' : 'var(--eco-green)';
+    document.getElementById('n-stressed').textContent = s.high_stress_zones;
+    document.getElementById('ndvi-trend').textContent = change < -0.05 ? 'Trend: Declining' : 'Trend: Stable';
+    const barsEl = document.getElementById('ndvi-bars');
+    barsEl.innerHTML = '';
+    if (Array.isArray(timeline)) {
+        ['degraded','at_risk','stable'].forEach(lbl => {
+            const pts = timeline.filter(t => t.status === lbl);
+            if (!pts.length) return;
+            const last = pts[pts.length - 1]?.ndvi || 0;
+            const pct  = ((last / 1) * 100).toFixed(0);
+            const color = lbl === 'degraded' ? 'var(--risk-red)' : lbl === 'at_risk' ? 'var(--risk-orange)' : 'var(--eco-green)';
+            barsEl.innerHTML += `
+            <div class="bar-container">
+                <div class="bar-label"><span>${lbl.replace('_',' ').toUpperCase()}</span><span>NDVI ${last.toFixed(3)}</span></div>
+                <div class="bar-track"><div class="bar-fill" style="width:${Math.min(pct,100)}%; background:${color}"></div></div>
+            </div>`;
+        });
+    }
+    document.getElementById('n-insight').textContent =
+        `Mean NDVI change over 10 years: ${change.toFixed(3)}. ` +
+        `Degraded zones show the sharpest decline, confirming vegetation fragmentation driven by infrastructure and settlement expansion.`;
+}
+
+function populateUrban(s, clusters) {
+    document.getElementById('u-infra').textContent    = s.avg_infra_pressure.toFixed(3);
+    document.getElementById('u-clusters').textContent = Array.isArray(clusters) ? clusters.length : 0;
+    const clEl = document.getElementById('cluster-list');
+    clEl.innerHTML = '<p style="font-size:0.75rem;color:var(--text-dim);margin-bottom:12px;text-transform:uppercase;letter-spacing:1px;">Degradation Fingerprints</p>';
+    if (Array.isArray(clusters)) {
+        clusters.forEach(c => {
+            clEl.innerHTML += `
+            <div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--glass-border);font-size:0.85rem;">
+                <span style="color:var(--text-dim)">${c.cluster}</span>
+                <span style="color:var(--eco-green);font-weight:600">${c.count.toLocaleString()}</span>
+            </div>`;
+        });
+    }
+    document.getElementById('u-insight').textContent =
+        `Infrastructure pressure index: ${s.avg_infra_pressure.toFixed(3)}. ` +
+        `Urban expansion is the primary driver of boundary shifts in fringe zones.`;
+}
+
+function populateGranger(granger) {
+    const el = document.getElementById('granger-results');
+    el.innerHTML = '';
+    if (!Array.isArray(granger) || granger.length === 0) {
+        el.innerHTML = '<p style="color:var(--text-dim);font-size:0.85rem;">Delayed effect analysis data loading...</p>';
+        return;
+    }
+    granger.forEach(g => {
+        const corr  = g.infra_ndvi_lag_corr;
+        const color = corr < -0.3 ? 'var(--risk-red)' : 'var(--risk-orange)';
+        const icon  = corr < -0.3 ? '🔴' : '🟡';
+        el.innerHTML += `
+        <div style="padding:15px;border-radius:12px;border:1px solid var(--glass-border);margin-bottom:12px;background:rgba(255,255,255,0.03)">
+            <div style="font-size:0.8rem;color:var(--text-dim);margin-bottom:6px;text-transform:uppercase">${icon} ${g.zone}</div>
+            <div style="font-size:1rem;font-weight:600;color:${color}">Lag Corr: ${corr.toFixed(3)}</div>
+            <div style="font-size:0.8rem;color:var(--text-dim);margin-top:4px">${g.interpretation}</div>
+        </div>`;
+    });
+}
+
+function populateAnalytics(s) {
+    document.getElementById('a-conf').textContent   = `${(s.model_accuracy * 100).toFixed(1)}%`;
+    document.getElementById('a-nodes').textContent  = s.total_cells.toLocaleString();
+    document.getElementById('a-stress').textContent = s.avg_latent_stress.toFixed(3);
+    document.getElementById('a-hidden').textContent = s.high_stress_zones;
+    document.getElementById('a-insight').textContent =
+        `Random Forest model trained on ${s.total_cells.toLocaleString()} zones with ${(s.model_accuracy*100).toFixed(1)}% confidence. ` +
+        `PCA extracted 3 latent stress axes explaining hidden ecosystem pressure. ` +
+        `${s.high_stress_zones} zones flagged as silently stressed — predicted to degrade within 2–3 years.`;
+}
+
+async function loadAll() {
+    try {
+        const results = await Promise.allSettled([
+            fetch(`${API}/api/stats`).then(r => r.json()),
+            fetch(`${API}/api/zones?limit=1000`).then(r => r.json()),
+            fetch(`${API}/api/importance`).then(r => r.json()),
+            fetch(`${API}/api/granger`).then(r => r.json()),
+            fetch(`${API}/api/clusters`).then(r => r.json()),
+            fetch(`${API}/api/ndvi_timeline`).then(r => r.json()),
+        ]);
+
+        const [stats, zones, imp, granger, clusters, timeline] = results.map(r =>
+            r.status === 'fulfilled' ? r.value : []
+        );
+
+        if (!stats || !stats.total_cells) {
+            throw new Error('Stats API failed');
+        }
+
+        if (Array.isArray(zones)) loadZones(zones);
+        populateDashboard(stats);
+        populateRisk(stats, imp);
+        populateNDVI(stats, timeline);
+        populateUrban(stats, clusters);
+        populateGranger(granger);
+        populateAnalytics(stats);
+
+    } catch (e) {
+        console.error('API error:', e);
+        document.getElementById('nav-total').textContent = 'Offline';
+        document.getElementById('d-insight').textContent =
+            'Could not connect to backend. Run: python3 -m uvicorn backend.api:app --reload';
+    }
+}
+
+const sidebar    = document.getElementById('sidebar');
+const sidebarBtn = document.getElementById('sidebarBtn');
+const menuItems  = document.querySelectorAll('.menu-item');
+const tabPanels  = document.querySelectorAll('.tab-panel');
+const yearSlider = document.getElementById('yearSlider');
+const yearDisplay = document.getElementById('yearDisplay');
+
+sidebarBtn.addEventListener('click', () => sidebar.classList.toggle('collapsed'));
+
+menuItems.forEach(item => {
+    item.addEventListener('click', () => {
+        const tab = item.getAttribute('data-tab');
+        if (!tab) return;
+        menuItems.forEach(i => i.classList.remove('active'));
+        item.classList.add('active');
+        tabPanels.forEach(p => { p.classList.remove('active'); if (p.id === tab) p.classList.add('active'); });
+        if (mapInstance) mapInstance.invalidateSize();
+    });
+});
+
+yearSlider.addEventListener('input', e => {
+    yearDisplay.textContent = e.target.value;
+});
+
+initMap();
+loadAll();
+</script>
+</body>
 </html>
