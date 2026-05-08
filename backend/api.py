@@ -43,6 +43,7 @@ def get_df():
     if _df is None:
         _df = pd.read_csv(os.path.join(PROC_DIR, "final_results.csv"))
         _df = _df.fillna(0)
+        _df = _df.replace([float('inf'), float('-inf')], 0)
     return _df
 
 

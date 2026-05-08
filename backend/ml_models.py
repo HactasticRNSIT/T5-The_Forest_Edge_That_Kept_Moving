@@ -44,14 +44,10 @@ FEATURE_COLS = [
 ]
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 1 — Load Data
-# ─────────────────────────────────────────────────────────────────────────────
 def load_data():
     print("\n[1/5] Loading feature matrix...")
     df = pd.read_csv(os.path.join(PROC_DIR, "ml_features.csv"))
 
-    # Regenerate labels if missing or all nan
     needs_labels = (
         "degradation_label" not in df.columns or
         df["degradation_label"].isna().all() or
@@ -61,12 +57,11 @@ def load_data():
     if needs_labels:
         print("    [WARN] Labels missing — regenerating from EVS...")
         if "ecological_vulnerability_score" not in df.columns:
-            # Recompute EVS from available features
-            ndvi_loss = df["ndvi_total_change"].fillna(0).clip(-1, 0).abs()
+            ndvi_loss   = df["ndvi_total_change"].fillna(0).clip(-1, 0).abs()
             ndvi_loss_n = ndvi_loss / (ndvi_loss.max() + 1e-6)
-            frag_n = df["fragmentation_index"].fillna(0) / (df["fragmentation_index"].fillna(0).max() + 1e-6)
-            infra_n = df["infra_pressure"].fillna(0)
-            urb_n = df["urban_proximity_score"].fillna(0) / (df["urban_proximity_score"].fillna(0).max() + 1e-6)
+            frag_n      = df["fragmentation_index"].fillna(0) / (df["fragmentation_index"].fillna(0).max() + 1e-6)
+            infra_n     = df["infra_pressure"].fillna(0)
+            urb_n       = df["urban_proximity_score"].fillna(0) / (df["urban_proximity_score"].fillna(0).max() + 1e-6)
             df["ecological_vulnerability_score"] = (
                 0.35 * ndvi_loss_n + 0.25 * frag_n +
                 0.25 * infra_n    + 0.15 * urb_n
@@ -81,15 +76,13 @@ def load_data():
 
     df = df[df["degradation_label"].notna()]
     df = df[~df["degradation_label"].isin(["nan", "", "None"])]
+    df = df.reset_index(drop=True)
 
     print(f"    ✓ {len(df)} rows loaded")
     print(f"    Labels:\n{df['degradation_label'].value_counts()}")
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 2 — Random Forest Classifier
-# ─────────────────────────────────────────────────────────────────────────────
 def train_model(df: pd.DataFrame):
     print("\n[2/5] Training Random Forest classifier...")
 
@@ -124,7 +117,7 @@ def train_model(df: pd.DataFrame):
     with open(os.path.join(MODELS_DIR, "feature_cols.pkl"), "wb") as f:
         pickle.dump(available, f)
 
-    df = df.copy()
+    df = df.copy().reset_index(drop=True)
     df["predicted_label"] = le.inverse_transform(model.predict(X.fillna(0)))
     df["pred_confidence"] = model.predict_proba(X.fillna(0)).max(axis=1).round(4)
 
@@ -132,52 +125,45 @@ def train_model(df: pd.DataFrame):
     return model, le, available, df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 3 — SHAP Explainability
-# ─────────────────────────────────────────────────────────────────────────────
 def compute_shap(model, df: pd.DataFrame, feature_cols: list):
     print("\n[3/5] Computing SHAP values...")
 
     X        = df[feature_cols].fillna(0)
-    X_sample = X.sample(min(500, len(X)), random_state=42)
+    X_sample = X.sample(min(300, len(X)), random_state=42).reset_index(drop=True)
 
     explainer   = shap.TreeExplainer(model)
     shap_values = explainer.shap_values(X_sample)
-    sv = shap_values[-1] if isinstance(shap_values, list) else shap_values
 
-    mean_abs = np.abs(sv).mean(axis=0)
+    # Handle multiclass safely
+    if isinstance(shap_values, list):
+        sv = np.mean([np.abs(s) for s in shap_values], axis=0)
+    else:
+        sv = np.abs(shap_values)
+
+    # Ensure 2D
+    if sv.ndim == 3:
+        sv = sv.mean(axis=0)
+
+    mean_abs = np.mean(sv, axis=0)
+
+    # Ensure lengths match
+    n_feats = min(len(feature_cols), len(mean_abs))
     importance_df = pd.DataFrame({
-        "feature":    feature_cols,
-        "importance": mean_abs.round(6),
+        "feature":    feature_cols[:n_feats],
+        "importance": mean_abs[:n_feats].round(6),
     }).sort_values("importance", ascending=False)
 
     print("    Top 5 degradation drivers:")
     for _, row in importance_df.head(5).iterrows():
         print(f"      {row['feature']:35s}  {row['importance']:.4f}")
 
-    # Full SHAP for all rows
-    shap_values_full = explainer.shap_values(X)
-    sv_full = shap_values_full[-1] if isinstance(shap_values_full, list) else shap_values_full
-    shap_df = pd.DataFrame(sv_full, columns=feature_cols)
-    shap_df["cell_id"] = df["cell_id"].values
-
-    shap_df.to_csv(os.path.join(PROC_DIR, "shap_values.csv"), index=False)
     importance_df.to_csv(os.path.join(PROC_DIR, "feature_importance.csv"), index=False)
+    importance_df.to_csv(os.path.join(PROC_DIR, "shap_values.csv"), index=False)
 
-    plt.figure(figsize=(10, 6))
-    shap.summary_plot(sv, X_sample, plot_type="bar", show=False)
-    plt.tight_layout()
-    plt.savefig(os.path.join(MODELS_DIR, "shap_summary.png"), dpi=150)
-    plt.close()
-
-    print(f"    ✓ SHAP saved → data/processed/shap_values.csv")
-    print(f"    ✓ SHAP plot  → models/shap_summary.png")
-    return shap_df, importance_df
+    print(f"    ✓ SHAP saved → data/processed/feature_importance.csv")
+    return importance_df, importance_df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 4 — PCA Latent Stress
-# ─────────────────────────────────────────────────────────────────────────────
 def compute_pca(df: pd.DataFrame, feature_cols: list):
     print("\n[4/5] Computing PCA latent stress axes...")
 
@@ -207,9 +193,6 @@ def compute_pca(df: pd.DataFrame, feature_cols: list):
     return df, pca
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# STEP 5 — Delayed Effect Analysis
-# ─────────────────────────────────────────────────────────────────────────────
 def compute_granger(df: pd.DataFrame):
     print("\n[5/5] Computing delayed effect analysis...")
 
@@ -257,9 +240,6 @@ def compute_granger(df: pd.DataFrame):
     return granger_df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# K-Means Clustering
-# ─────────────────────────────────────────────────────────────────────────────
 def compute_clusters(df: pd.DataFrame, feature_cols: list):
     print("\n[+] K-Means degradation clusters...")
 
@@ -268,12 +248,21 @@ def compute_clusters(df: pd.DataFrame, feature_cols: list):
     df     = df.copy()
     df["cluster"] = kmeans.fit_predict(X)
 
-    cluster_names = {
-        0: "Infrastructure-led collapse",
-        1: "Climate-amplified fragmentation",
-        2: "Resilient green corridor",
-        3: "Slow degradation fringe",
-    }
+    centers = pd.DataFrame(kmeans.cluster_centers_, columns=feature_cols)
+    cluster_names = {}
+    for i in range(4):
+        ndvi_val  = centers.iloc[i].get("ndvi_total_change", 0)
+        infra_val = centers.iloc[i].get("infra_pressure", 0)
+        rain_val  = centers.iloc[i].get("rainfall_anomaly", 0)
+        if ndvi_val < -0.1:
+            cluster_names[i] = "Vegetation-loss zone"
+        elif infra_val > 0.3:
+            cluster_names[i] = "Infrastructure-pressure zone"
+        elif rain_val < -50:
+            cluster_names[i] = "Climate-stressed zone"
+        else:
+            cluster_names[i] = "Ecologically stable zone"
+
     df["cluster_name"] = df["cluster"].map(cluster_names)
 
     with open(os.path.join(MODELS_DIR, "kmeans_model.pkl"), "wb") as f:
@@ -285,9 +274,6 @@ def compute_clusters(df: pd.DataFrame, feature_cols: list):
     return df
 
 
-# ─────────────────────────────────────────────────────────────────────────────
-# MAIN
-# ─────────────────────────────────────────────────────────────────────────────
 def run_ml_pipeline():
     print("=" * 60)
     print("  EcoShift AI — ML Models")
